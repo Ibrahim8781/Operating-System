@@ -37,6 +37,11 @@ void print_right_triangle(int n) {
 
 int main(int argc, char *argv[]) {
 
+    if(argc != 3) {
+        printf("Invalid Arugrmaents\n");
+        return 1;
+    }
+
     char *pattern_option = argv[1];
     int number = atoi(argv[2]);
 
