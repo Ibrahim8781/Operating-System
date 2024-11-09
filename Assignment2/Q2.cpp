@@ -1,94 +1,105 @@
-#include <stdio.h>
-#include <stdlib.h>
+#include <iostream>
+#include <string>
 #include <unistd.h>
-#include <string.h>
 #include <sys/wait.h>
+#include <cstring>
 
-#define NUM_CHILDREN 5
-#define BUFFER_SIZE 1024
-
-void create_chain_processes() {
-    int pipes[NUM_CHILDREN + 1][2];
-    pid_t pids[NUM_CHILDREN + 1];
-    char buffer[BUFFER_SIZE];
-
-    // Create pipes for communication between processes
-    for (int i = 0; i <= NUM_CHILDREN; ++i) {
-        if (pipe(pipes[i]) == -1) {
-            perror("Pipe creation failed");
-            exit(1);
-        }
-    }
-
-    // Create child processes
-    for (int i = 0; i <= NUM_CHILDREN; ++i) {
-        pids[i] = fork();
-        if (pids[i] < 0) {
-            perror("Fork failed");
-            exit(1);
-        } else if (pids[i] == 0) {  // Child process
-            // Set up pipe redirections
-            if (i > 0) {
-                close(pipes[i - 1][1]);  // Close write end of previous pipe
-            }
-            if (i < NUM_CHILDREN) {
-                close(pipes[i][0]);      // Close read end of current pipe
-            }
-
-            while (1) {
-                if (i > 0) {
-                    // Read from the previous process
-                    read(pipes[i - 1][0], buffer, BUFFER_SIZE);
-                    if (strcmp(buffer, "Quit") == 0) {
-                        exit(0);  // Exit if "Quit" is received
-                    }
-                } else {
-                    // First process prompts for input
-                    printf("Enter message (or 'Quit' to exit): ");
-                    fgets(buffer, BUFFER_SIZE, stdin);
-                    buffer[strcspn(buffer, "\n")] = 0;  // Remove newline
-
-                    if (strcmp(buffer, "Quit") == 0) {
-                        for (int j = 0; j <= NUM_CHILDREN; ++j) {
-                            write(pipes[j][1], "Quit", strlen("Quit") + 1);
-                            close(pipes[j][1]);
-                        }
-                        exit(0);
-                    }
-                }
-
-                // Append PID to the message, reserving space
-                char updated_message[BUFFER_SIZE];
-                snprintf(updated_message, BUFFER_SIZE, "%.*s:%d", BUFFER_SIZE - 20, buffer, getpid());
-                printf("%s\n", updated_message);
-
-                // Send the message to the next process
-                if (i < NUM_CHILDREN) {
-                    write(pipes[i][1], updated_message, strlen(updated_message) + 1);
-                } else {
-                    // If it's the last process, print final message and break
-                    printf("%s\n", updated_message);
-                }
-
-                // First process breaks after sending the message
-                if (i == 0) break;
-            }
-            exit(0);
-        }
-    }
-
-    // Close pipes in parent and wait for child processes to finish
-    for (int i = 0; i <= NUM_CHILDREN; ++i) {
-        close(pipes[i][0]);
-        close(pipes[i][1]);
-    }
-
-    for (int i = 0; i <= NUM_CHILDREN; ++i) {
-        waitpid(pids[i], NULL, 0);
-    }
-}
+#define NUM_PROCESSES 6
+#define READ_END 0
+#define WRITE_END 1
 
 int main() {
-    create_chain_processes();
+    int pipes[NUM_PROCESSES][2];
+    pid_t pids[NUM_PROCESSES];
+    
+    // Create all pipes first
+    for (int i = 0; i < NUM_PROCESSES; i++) {
+        if (pipe(pipes[i]) == -1) {
+            std::cerr << "Pipe creation failed\n";
+            exit(1);
+        }
+    }
+    
+    // Create child processes
+    for (int i = 0; i < NUM_PROCESSES; i++) {
+        pids[i] = fork();
+        
+        if (pids[i] < 0) {
+            std::cerr << "Fork failed\n";
+            exit(1);
+        }
+        
+        if (pids[i] == 0) { // Child process
+            // Close unused pipes
+            for (int j = 0; j < NUM_PROCESSES; j++) {
+                if (j == i) { // Current process reads from this pipe
+                    close(pipes[j][WRITE_END]);
+                } else if (j == (i + 1) % NUM_PROCESSES) { // Write to next process
+                    close(pipes[j][READ_END]);
+                } else { // Close unused pipes
+                    close(pipes[j][READ_END]);
+                    close(pipes[j][WRITE_END]);
+                }
+            }
+            
+            char buffer[1024];
+            std::string message;
+            
+            while (true) {
+                if (i == 0) { // P1 process
+                    std::cout << "Enter message (type 'Quit' to exit): " << std::flush;
+                    std::getline(std::cin, message);
+                    
+                    if (message == "Quit") {
+                        // Send quit message through the pipe
+                        write(pipes[1][WRITE_END], "Quit", 5);
+                        exit(0);
+                    }
+                    
+                    message += ":" + std::to_string(getpid());
+                    std::cout << message << std::endl;
+                    write(pipes[1][WRITE_END], message.c_str(), message.length() + 1);
+                    
+                    // Wait for message to come back
+                    ssize_t n = read(pipes[0][READ_END], buffer, sizeof(buffer));
+                    if (n > 0) {
+                        std::cout << buffer << std::endl;
+                    }
+                } else {
+                    // Other processes (C1 to C5)
+                    ssize_t n = read(pipes[i][READ_END], buffer, sizeof(buffer));
+                    if (n <= 0) continue;
+                    
+                    if (strcmp(buffer, "Quit") == 0) {
+                        write(pipes[(i + 1) % NUM_PROCESSES][WRITE_END], "Quit", 5);
+                        exit(0);
+                    }
+                    
+                    message = std::string(buffer) + ":" + std::to_string(getpid());
+                    std::cout << message << std::endl;
+                    
+                    write(pipes[(i + 1) % NUM_PROCESSES][WRITE_END], 
+                          message.c_str(), message.length() + 1);
+                }
+            }
+        }
+    }
+    
+    // Parent process
+    // Close all pipes in parent
+    for (int i = 0; i < NUM_PROCESSES; i++) {
+        close(pipes[i][READ_END]);
+        close(pipes[i][WRITE_END]);
+    }
+    
+    // Wait for P1 to finish
+    waitpid(pids[0], nullptr, 0);
+    
+    // Kill remaining processes
+    for (int i = 1; i < NUM_PROCESSES; i++) {
+        kill(pids[i], SIGTERM);
+        waitpid(pids[i], nullptr, 0);
+    }
+    
     return 0;
 }
