@@ -18,7 +18,7 @@ void employee_process(int id, int read_pipe, int write_pipe) {
 
     // Simulate employee decision (80% chance of agreeing)
     srand(time(NULL) ^ (id << 16));
-    if (rand() % 100 < 80) {
+    if (rand() % 100 < 70) {
         strcpy(response, "Yes");
     } else {
         strcpy(response, "No");
@@ -34,6 +34,7 @@ void employee_process(int id, int read_pipe, int write_pipe) {
 
 int main() {
     const int NUM_EMPLOYEES = 10;
+    const int MAX_TIME_LEN = 20;
 
 
     int pipes[NUM_EMPLOYEES][2];
@@ -42,7 +43,6 @@ int main() {
     char response[4];
     int all_agreed;
 
-    // Create pipes for each employee
     for (int i = 0; i < NUM_EMPLOYEES; i++) {
         if (pipe(pipes[i]) == -1) {
             perror("pipe");
@@ -50,12 +50,11 @@ int main() {
         }
     }
 
-    // Get suggested time from user
     printf("Enter suggested meeting time: ");
     fgets(suggested_time, sizeof(suggested_time), stdin);
-    suggested_time[strcspn(suggested_time, "\n")] = 0; // Remove newline
+    suggested_time[strcspn(suggested_time, "\n")] = 0; 
 
-    // Create employee processes
+
     for (int i = 0; i < NUM_EMPLOYEES; i++) {
         pids[i] = fork();
 
@@ -73,7 +72,6 @@ int main() {
         }
     }
 
-    // Parent process (owner) waits for responses
     all_agreed = 1;
     for (int i = 0; i < NUM_EMPLOYEES; i++) {
         read(pipes[i][READ_END], response, sizeof(response));
