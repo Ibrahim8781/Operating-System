@@ -38,4 +38,4 @@ int main() {
 
     sem_destroy(&parking_spots);
     return 0;
-}
+} 

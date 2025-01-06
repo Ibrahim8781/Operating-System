@@ -21,7 +21,7 @@
 #define NUM_PLAYERS 4
 #define BOARD_SIZE 52
 #define PIECES_PER_PLAYER 4
-#define HOME_STRETCH 6
+#define HOME_STRETCH 5
 #define YARD_SIZE 4
 #define SAFE_SQUARES 8
 
@@ -213,7 +213,7 @@ void * player_turn(void * arg) {
 }
 
 int roll_dice() {
-  return (rand() % 6) + 1;
+  return (rand() % 2) + 1;
 }
 
 void move_piece(int player, int piece, int steps) {
